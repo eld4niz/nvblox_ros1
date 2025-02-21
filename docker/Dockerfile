@@ -1,54 +1,40 @@
 FROM nvidia/cuda:11.8.0-devel-ubuntu20.04
 
-# This docker is intended to run on a development machine.
-# No CUDA (for now), but with simulation and without sensor drivers.
+# Set timezone properly
+ENV TZ="Europe/Warsaw"
 
-# Based heavily on Piloting docker from Julian Keller
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata && \
+    ln -fs /usr/share/zoneinfo/Europe/Warsaw /etc/localtime && \
+    dpkg-reconfigure --frontend noninteractive tzdata
 
-# Install ROS first. This should be the only image where you have to
-# manually install ROS so...
-# Taken from OSRF docker file.
-
-RUN apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata 
-
-# We're in Zurich!
-ENV TZ="Europe/Zurich"
-
-# install packages
+# Install required packages
 RUN apt-get update && apt-get install -q -y --no-install-recommends \
-    dirmngr \
-    gnupg2
+    dirmngr gnupg2 curl
 
-# setup sources.list
-RUN echo "deb http://packages.ros.org/ros/ubuntu focal main" > /etc/apt/sources.list.d/ros1-latest.list
+# Setup ROS repository securely
+RUN curl -fsSL http://packages.ros.org/ros.key | gpg --dearmor -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros/ubuntu focal main" | tee /etc/apt/sources.list.d/ros1-latest.list
 
-# setup keys
-RUN apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C1CF6E31E6BADE8868B172B4F42ED6FBAB17C654
+# Set environment variables
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV ROS_DISTRO=noetic
 
-# setup environment
-ENV LANG C.UTF-8
-ENV LC_ALL C.UTF-8
+# Install ROS
+RUN apt-get update && apt-get install -y --no-install-recommends ros-noetic-desktop-full && \
+    rm -rf /var/lib/apt/lists/*
 
-ENV ROS_DISTRO noetic
-
-# install ros packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ros-noetic-desktop-full
-
-# Copy scripts folder
+# Copy scripts and set permissions
 COPY scripts/ /root/scripts/
 WORKDIR /root/
-RUN chmod a+x -R /root/scripts
+RUN chmod +x /root/scripts/*.sh
 
-# Env variables
+# Environment variables
 ENV NVBLOX_DEP_WS=/root/nvblox_dep_ws
 ENV SCRIPTS_PATH=/root/scripts
 
-# Run the general dep installation
-RUN scripts/install_sys_deps.sh
-
-# Run the ROS workspace set-up and dep installation
-RUN scripts/install_ros_deps.sh
-
-# Finally, build all the stuff we downloaded.
-RUN scripts/build_ros.sh
+# Run installation scripts
+RUN /root/scripts/install_sys_deps.sh && \
+    /root/scripts/install_ros_deps.sh && \
+    /root/scripts/build_ros.sh
